@@ -1,0 +1,10 @@
+[03-Apr-2016 22:03:20 America/Denver] PHP Parse error:  syntax error, unexpected '$sql' (T_VARIABLE) in /home3/sciench3/public_html/ionic/editAddForm.php on line 99
+[03-Apr-2016 22:03:40 America/Denver] PHP Notice:  Undefined index: options in /home3/sciench3/public_html/ionic/editAddForm.php on line 113
+[04-Apr-2016 06:02:26 America/Denver] PHP Notice:  Undefined index: user_uid in /home3/sciench3/public_html/ionic/getUserProjects.php on line 9
+[04-Apr-2016 06:03:29 America/Denver] PHP Notice:  Undefined index: user_uid in /home3/sciench3/public_html/ionic/getUserProjects.php on line 9
+[04-Apr-2016 08:18:08 America/Denver] PHP Notice:  Undefined index: user_uid in /home3/sciench3/public_html/ionic/getUserProjects.php on line 9
+[04-Apr-2016 13:42:42 America/Denver] PHP Notice:  Trying to get property of non-object in /home3/sciench3/public_html/ionic/editAddUser.php on line 14
+[04-Apr-2016 13:42:49 America/Denver] PHP Notice:  Trying to get property of non-object in /home3/sciench3/public_html/ionic/editAddUser.php on line 14
+[04-Apr-2016 13:43:02 America/Denver] PHP Notice:  Trying to get property of non-object in /home3/sciench3/public_html/ionic/editAddUser.php on line 14
+[04-Apr-2016 14:31:10 America/Denver] PHP Notice:  Undefined index: user_uid in /home3/sciench3/public_html/ionic/getUserProjects.php on line 9
+[08-Apr-2016 14:02:38 America/Denver] PHP Notice:  Undefined index: user_uid in /home3/sciench3/public_html/ionic/getUserProjects.php on line 9

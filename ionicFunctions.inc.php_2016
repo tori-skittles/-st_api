@@ -1,0 +1,1081 @@
+<?php
+
+
+function getProjects($id, $isAdmin){
+
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+               
+		$sql = "SELECT
+				project.id as project_uid,
+				project.name as project_name,
+				project.description as project_description,
+				project.created_at as project_created_at,
+				sites.id as site_uid,
+				sites.name as site_name,
+				sites.lat,
+				sites.lon,
+				sites.description as site_description,
+				sites.created_at as site_created_at,
+				form.id as form_uid,
+				form.name as form_name,
+				form.description as form_description,
+				form.created_at as form_created_at,
+				fields.id as field_uid,
+				fields.type as field_type,
+				fields.value as field_value,
+				fields.icon as field_icon,
+				fields.color as field_color,
+				field_options.id as field_option_uid,
+                                field_options.value as field_option_value
+			FROM
+				project
+			LEFT JOIN project_x_sites ON project_x_sites.project_uid = project.id AND project_x_sites.is_active = 1
+			LEFT JOIN sites ON sites.id = project_x_sites.site_uid
+			LEFT JOIN site_x_users ON site_x_users.site_uid = sites.id
+			LEFT JOIN project_x_forms ON project_x_forms.project_uid = project.id AND project_x_forms.is_active = 1
+			LEFT JOIN form ON form.id = project_x_forms.form_uid
+			LEFT JOIN form_x_fields ON form_x_fields.form_uid = form.id
+			LEFT JOIN fields ON fields.id = form_x_fields.field_uid
+			LEFT JOIN field_options ON field_options.field_uid = fields.id
+			WHERE project.is_active = 1";
+		if( !$isAdmin )
+		{		
+			$sql = $sql.' AND site_x_users.user_uid = :user_uid';
+		}	 
+		
+		$statement = $pdo->prepare($sql);
+		if( !$isAdmin )
+                {
+                	$statement->bindValue(':user_uid', $id);
+                }
+		$statement->execute();
+        }catch(PDOException $e){
+                $error = 'Error counting project_user';
+                include 'error.html.php';
+                exit();
+        }
+
+        $rows = $statement->fetchAll( );
+
+	$data = array();
+	foreach( $rows as $row )
+	{
+		$project_uid = $row['project_uid'];
+		$site_uid = $row['site_uid'];
+		$form_uid = $row['form_uid'];
+
+		if( !isset( $data[$project_uid] ) )
+		{
+			$data[$project_uid] = array();
+			$data[$project_uid]['name'] = $row['project_name'];
+			$data[$project_uid]['id'] = $project_uid;
+			$data[$project_uid]['description'] = $row['project_description'];
+			$data[$project_uid]['created_at'] = $row['project_created_at'];
+			$data[$project_uid]['sites'] = array();	
+			$data[$project_uid]['forms'] = array();
+		}
+
+		if( !isset( $data[$project_uid]['sites'][$site_uid] ) && !empty( $site_uid) )
+		{
+			$data[$project_uid]['sites'][$site_uid] = array();
+			$data[$project_uid]['sites'][$site_uid]['id'] = $site_uid;
+			$data[$project_uid]['sites'][$site_uid]['name'] = $row['site_name'];
+			$data[$project_uid]['sites'][$site_uid]['lat'] = $row['lat'];
+			$data[$project_uid]['sites'][$site_uid]['lon'] = $row['lon'];
+			$data[$project_uid]['sites'][$site_uid]['description'] = $row['site_description'];
+			$data[$project_uid]['sites'][$site_uid]['created_at'] = $row['site_created_at'];
+		}
+
+		if( !isset( $data[$project_uid]['forms'][$form_uid] ) && !empty($form_uid) )
+		{
+			$data[$project_uid]['forms'][$form_uid] = array();
+			$data[$project_uid]['forms'][$form_uid]['id'] = $form_uid;
+			$data[$project_uid]['forms'][$form_uid]['fields'] = array();
+			$data[$project_uid]['forms'][$form_uid]['name'] = $row['form_name'];
+			$data[$project_uid]['forms'][$form_uid]['description'] = $row['form_description'];
+			$data[$project_uid]['forms'][$form_uid]['created_at'] = $row['form_created_at'];
+		}
+	
+		$field_uid = $row['field_uid'];
+		if( !isset( $data[$project_uid]['forms'][$form_uid]['fields'][$field_uid] ) && !empty($field_uid) )
+		{
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid] = array();
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['id'] = $field_uid;
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['type'] = $row['field_type'];
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['value'] = $row['field_value'];
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['icon'] = $row['field_icon'];
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['color'] = $row['field_color'];
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['options'] = array();
+		}
+
+		if( !empty( $row['field_option_uid'] ) )
+		{
+			$option = (Object) null;
+			$option->id = $row['field_option_uid'];
+			$option->value = $row['field_option_value'];
+			$data[$project_uid]['forms'][$form_uid]['fields'][$field_uid]['options'][$option->id] = $option;
+		}
+	}
+	$return = array();
+	foreach( $data as $project)
+	{
+		$proj = $project;
+		$sites = $project['sites'];
+		$forms = $project['forms'];
+		$proj['sites'] = array();
+		$proj['forms'] = array();
+		foreach( $sites as $site )
+		{
+			$proj['sites'][] = $site;		
+		}
+		foreach( $forms as $form )
+		{
+			$f = $form;
+			$f['fields'] = array();
+			foreach( $form['fields'] as $field )
+			{
+				$f['fields'][] = $field;
+			}
+			$proj['forms'][] = $f;
+		}
+		$return[] = $proj;
+	}
+	return $return;
+}
+	
+function getUserProjects($id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = "SELECT COUNT(*) FROM project_user WHERE id = :id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting project_user';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = 'SELECT user_id, project_id, project_admin FROM project_user WHERE id = :id';
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching project users' . $e->getMessage();
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$projectUser[] = array('project_id' => $row['project_id'], 'project_admin' => $row['project_admin']);
+		}
+		foreach($projectUser as $p){
+			try{
+				$sql = ('SELECT project_id, project_name, project_description, project_time_created, user_id FROM project WHERE project_id = :id');
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':id', $p['project_id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$results['Status'] = 'Error';
+				$results['Message'] = 'Error fetching projects';
+				$results['password'] = '';
+				print json_encode($results);
+				exit();
+			}
+			foreach($s as $row){
+				$projects[] = array('id' => $row['project_id'], 'name' => $row['project_name'], 'project_description' => $row['project_description'],'project_time_created' =>  $row['project_time_created'],'user_id' => $row['user_id']);
+			}
+		}
+	}else{
+		$projects[] = array('id' => 0, 'name' => 'None', 'project_description' => 'None','project_time_created' => 0,'user_id' => 0,);
+	}
+	
+	return $projects;
+}
+
+function getUserRole($id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = "SELECT super_admin FROM user WHERE id = :id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting project_user';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row['super_admin'] == 1){
+		$role = "Super Admin";
+		return $role;
+	}
+	
+	try{
+		$sql = "SELECT COUNT(*) FROM project_user WHERE id = :id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting project_user';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = 'SELECT project_admin FROM project_user WHERE id = :id';
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching project users' . $e->getMessage();
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			if($row['project_admin'] == 1){
+				$role = "Project Admin";
+				return $role;
+			}
+		}
+	}
+	$role = "User";
+	return $role;
+}
+
+function getProjectSites($projects){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	foreach($projects as $project){
+		try{
+			$sql = "SELECT COUNT(*) FROM site WHERE project_id = :project_id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':project_id', $project['id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting sites';
+			include 'error.html.php';
+			exit();
+		}
+			
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = "SELECT site_id, site_name, site_description, site_lat,
+					site_lon, project_id FROM site WHERE project_id = :project_id";
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':project_id', $project['id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching sites';
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$sites[] = array('site_id' => $row['site_id'],'site_name' => $row['site_name'],
+				'site_description' => $row['site_description'],'site_lat' => $row['site_lat'],
+				'site_lon' => $row['site_lon'],'project_id' => $row['project_id']);
+			}
+		}
+	}
+	if(!isset($sites)){
+		$sites[] = array('site_id' => 0,'site_name' => 'No sites',
+				'site_description' => 'none','site_lat' => 0,'site_lon' => 0,'project_id' => 0);
+	}
+return $sites;
+}
+
+function getProjectForms($projects){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$forms = array();
+	foreach($projects as $project){
+		try{
+			$sql = "SELECT COUNT(*) FROM project_form WHERE project_id = :project_id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':project_id', $project['id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting forms';
+			include 'error.html.php';
+			exit();
+		}
+			
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = "SELECT form.form_id AS f_id, form_name, form_description FROM form INNER JOIN project_form ON form.form_id = project_form.form_id WHERE project_id = :project_id";
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':project_id', $project['id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching forms';
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$tempForm = array('form_id' => $row['f_id'],'form_name' => $row['form_name'],
+				'form_description' => $row['form_description'], 'project_id' => $project['id']);
+				$duplicate = false;
+				if(isset($forms)){
+					foreach($forms as $form){
+						if($form['form_id'] == $tempForm['form_id']){
+							$duplicate = true;
+						}
+					}
+					if(!$duplicate){
+						$forms[] = $tempForm;
+					}
+				}else{
+					$forms[] = $tempForm;
+				}
+			}
+		}
+	}
+	if(!isset($forms)){
+		$forms[] = array('form_id' => 0,'form_name' => 'No forms',
+				'form_description' => 'none', 'project_id' => 0);
+	}
+return $forms;
+}
+
+function getViewProjectForms($id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$forms = array();
+	try{
+		$sql = "SELECT COUNT(*) FROM project_form WHERE project_id = :project_id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':project_id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting forms';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT form.form_id AS f_id, form_name, form_description FROM form INNER JOIN project_form ON form.form_id = project_form.form_id WHERE project_id = :project_id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':project_id', $id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching forms';
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$forms[] = array('form_id' => $row['f_id'],'form_name' => $row['form_name'],
+			'form_description' => $row['form_description'], 'project_id' => $id);
+		}
+	}else{
+		$forms[] = array('form_id' => 0,'form_name' => 'No forms', 'form_description' => 'none', 'project_id' => 0);
+	}
+
+return $forms;
+}
+
+function getFormInputs($forms){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	foreach($forms as $form){
+		try{
+			$sql = "SELECT COUNT(*) FROM form_input WHERE form_id = :form_id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':form_id', $form['form_id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting form_inputs';
+			include 'error.html.php';
+			exit();
+		}
+			
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = "SELECT form_input_id, form_input_type, form_input_name, form_id FROM form_input WHERE form_id = :form_id";
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':form_id', $form['form_id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching form_inputs';
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$form_inputs[] = array('form_input_id' => $row['form_input_id'],'form_input_name' => $row['form_input_name'],'form_input_type' => $row['form_input_type'],'form_id' => $row['form_id']);
+			}
+		}
+	}
+	if(!isset($form_inputs)){
+		$form_inputs[] = array('form_input_id' => 0,'form_input_name' => 'None',
+				'form_input_type' => '','form_id' => 0);
+	}
+return $form_inputs;
+}
+
+function getDropdowns($form_inputs){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	foreach($form_inputs as $form_input){
+		try{
+			$sql = "SELECT COUNT(*) FROM dropdown WHERE form_input_id = :form_input_id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':form_input_id', $form_input['form_input_id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting dropdowns';
+			include 'error.html.php';
+			exit();
+		}
+			
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = "SELECT dropdown_value, form_input_id FROM dropdown WHERE form_input_id = :form_input_id";
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':form_input_id', $form_input['form_input_id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching dropdowns';
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$dropdowns[] = array('dropdown_value' => $row['dropdown_value'],'form_input_id' => $row['form_input_id']);
+			}
+		}
+	}
+	if(!isset($dropdowns)){
+		$dropdowns[] = array('form_input_id' => 0,'dropdown_value' => 'None');
+	}
+return $dropdowns;
+}
+
+function submitData($data)
+{
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+
+	$form = $data->form;
+	$form_uid = $form->id;
+	try
+	{
+		$sql =  "INSERT INTO 
+				submissions
+			 SET 
+				project_uid = :project_uid,
+				site_uid = :site_uid,
+				form_uid = :form_uid,
+				user_uid = :user_uid,
+				is_valid = 1,
+				updated_at = NOW()";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':project_uid', $data->project_uid);
+		$s->bindValue(':site_uid', $data->site_uid);
+		$s->bindValue(':form_uid', $form_uid);
+		$s->bindValue(':user_uid', $data->user_uid);
+		$s->execute();
+        }catch(PDOException $e){
+                $error = 'Error setting observation' . $e->getMessage();
+                return $error;
+        }
+        $submission_uid = $pdo->lastInsertId();
+
+	try{
+		foreach( $form->fields as $field )
+		{
+			$input = isset($field->input) ? $field->input : NULL;
+			$sql = "INSERT INTO
+					submission_x_data
+				SET
+					submission_uid = :submission_uid,
+					field_uid = :field_uid,
+					value = :value,
+					updated_at = NOW()";
+
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':submission_uid', $submission_uid);
+			$s->bindValue(':field_uid', $field->id);
+			$s->bindValue(':value', $input );
+			$s->execute();		
+		}
+	
+	}catch(PDOException $e){
+                $error = 'Error setting observation' . $e->getMessage();
+                return $error;
+        }
+	
+	return true;
+}
+
+function insertData($user_id, $project_id, $site_id, $form_id, $field_ids, $values, $lat, $lng){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = 'INSERT INTO observation SET
+			form_id = :form_id,
+			site_id = :siteId,
+			user_id = :userId,
+			lat = :lat,
+			lng = :lng,
+			project_id = :projectId';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':form_id', $form_id);
+		$s->bindValue(':siteId', $site_id);
+		$s->bindValue(':userId', $user_id);
+		$s->bindValue(':projectId', $project_id);
+		$s->bindValue(':lat', $lat);
+		$s->bindValue(':lng', $lng);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error setting observation' . $e->getMessage();
+		return $error;
+	}
+	$observationId = $pdo->lastInsertId();	
+
+	try{
+		$sql = 'INSERT INTO data SET
+			form_input_id = :formInputId,
+			observation_id = :observation_id,
+			data_value = :value,
+			site_id = :siteId,
+			user_id = :userId,
+			project_id = :projectId';
+		$s = $pdo->prepare($sql);
+		$i = 0;
+		foreach($field_ids as $field_id){
+			$s->bindValue(':formInputId', $field_id);
+			$s->bindValue(':value', $values[$i]);
+			$s->bindValue(':observation_id', $observationId);
+			$s->bindValue(':siteId', $site_id);
+			$s->bindValue(':userId', $user_id);
+			$s->bindValue(':projectId', $project_id);
+			$s->execute();
+			$i++;
+		}
+	}catch(PDOException $e){
+		$error = 'Error uploading data' . $e->getMessage();
+		return $error;
+	}
+	return $observationId;
+}
+
+function insertImage($link, $imageName, $project_id, $site_id, $user_id, $observation_id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+		$sql = 'INSERT INTO image SET link = :fileName, image_name = :imageName, project_id = :project_id, site_id = :site_id, user_id = :user_id, observation_id = :observation_id';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':fileName', $link);
+		$s->bindValue(':imageName', $imageName);
+		$s->bindValue(':project_id', $project_id);
+		$s->bindValue(':site_id', $site_id);
+		$s->bindValue(':user_id', $user_id);
+		$s->bindValue(':observation_id', $observation_id);
+		$s->execute();
+	}catch(PDOException $e){
+		$results = "error uploading image";
+		print json_encode($results);
+		exit();
+	}
+	$imageID = $pdo->lastInsertId();
+	return $imageID;
+}
+
+function insertObservation($project_id, $site_id, $user_id, $lat, $lng){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+		$sql = 'INSERT INTO observation SET
+			form_id = 0,
+			site_id = :siteId,
+			user_id = :userId,
+			lat = :lat,
+			lng = :lng,
+			project_id = :projectId';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':siteId', $site_id);
+		$s->bindValue(':userId', $user_id);
+		$s->bindValue(':projectId', $project_id);
+		$s->bindValue(':lat', $lat);
+		$s->bindValue(':lng', $lng);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error setting image observation' . $e->getMessage();
+		return $error;
+	}
+	$observationId = $pdo->lastInsertId();
+	return $observationId;	
+}
+
+function getUserObservations($id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+		$sql = "SELECT COUNT(*) FROM observation WHERE user_id = :id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting observations';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = 'SELECT observation_id, form_id, site_id, project_id, lat, lng, observation_time_created, user_id FROM observation WHERE user_id = :id';
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching observations' . $e->getMessage();
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$observations[] = array('observation_id' => $row['observation_id'],'form_id' => $row['form_id'],'site_id' => $row['site_id'],'project_id' => $row['project_id'],'observation_time_created' => $row['observation_time_created'], 'user_id' => $row['user_id'], 'lat' => $row['lat'], 'lng' => $row['lng']);
+		}
+	}else{
+		$observations[] = array('observation_id' => 0,'form_id' => 0,'site_id' => 0,'project_id' => 0,'observation_time_created' => 0, 'user_id' => 0, 'lat' => 0, 'lng' => 0);
+	}
+	
+	return $observations;
+}
+
+function getProjectObservations($id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+		$sql = "SELECT COUNT(*) FROM observation WHERE project_id = :id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':id', $id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting observations';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = 'SELECT observation_id, form_id, site_id, project_id, lat, lng, observation_time_created, user_id FROM observation WHERE project_id = :id';
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching observations' . $e->getMessage();
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$observations[] = array('observation_id' => $row['observation_id'],'form_id' => $row['form_id'],'site_id' => $row['site_id'],'project_id' => $row['project_id'],'observation_time_created' => $row['observation_time_created'], 'user_id' => $row['user_id'], 'lat' => $row['lat'], 'lng' => $row['lng']);
+		}
+	}else{
+		$observations[] = array('observation_id' => 0,'form_id' => 0,'site_id' => 0,'project_id' => 0,'observation_time_created' => 0, 'user_id' => 0, 'lat' => 0, 'lng' => 0);
+	}
+	
+	return $observations;
+}
+
+function getObservationData($observations){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$data = array();
+	foreach($observations as $observation){
+		try{
+			$sql = "SELECT COUNT(*) FROM data WHERE observation_id = :id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $observation['observation_id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting data';
+			include 'error.html.php';
+			exit();
+		}
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = 'SELECT data_id, form_input_id, data_value, observation_id FROM data WHERE observation_id = :id';
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':id', $observation['observation_id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching data' . $e->getMessage();
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$data[] = array('data_id' => $row['data_id'],'form_input_id' => $row['form_input_id'],'data_value' => $row['data_value'],'observation_id' => $row['observation_id']);
+			}
+		}
+	}
+	if(count($data) == 0){
+		$data[] = array('data_id' => 0,'form_input_id' => 0,'data_value' => 0,'observation_id' => 0);
+	}
+	return $data;
+}
+
+function getObservationImages($observations){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	foreach($observations as $observation){
+		try{
+			$sql = "SELECT COUNT(*) FROM image WHERE observation_id = :id";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':id', $observation['observation_id']);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error counting images';
+			include 'error.html.php';
+			exit();
+		}
+		$row = $s->fetch();
+		if($row[0] > 0){
+			try{
+				$sql = 'SELECT image_id, link, image_name, observation_id FROM image WHERE observation_id = :id';
+				$s = $pdo->prepare($sql);
+				$s->bindValue(':id', $observation['observation_id']);
+				$s->execute();
+			}catch(PDOException $e){
+				$error = 'Error fetching image' . $e->getMessage();
+				include 'error.html.php';
+				exit();
+			}
+			foreach($s as $row){
+				$images[] = array('image_id' => $row['image_id'],'link' => $row['link'],'image_name' => $row['image_name'],'observation_id' => $row['observation_id']);
+			}
+		}
+	}
+	if(!isset($images)){
+		$images = array('image_id' => 0,'link' => 'none','image_name' => 'none','observation_id' => 0);
+	}
+	return $images;
+}
+
+function emailAccountCreators($first_name, $last_name, $email, $phone){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+		
+	try{
+		$sql = "SELECT COUNT(*) FROM user WHERE account_creator = 1";
+		$s = $pdo->prepare($sql);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting account creators';
+		include 'error.html.php';
+		exit();
+	}
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT email FROM user WHERE account_creator = 1";
+			$s = $pdo->prepare($sql);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching images';
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			notifyAccountCreator($row['email'], $first_name, $last_name, $email, $phone);
+		}
+	}
+}
+	
+function notifyAccountCreator($creator_email, $first_name, $last_name, $email, $phone){
+	$message = "Dear Account Creator,\r\n  Please create the account with the following values\r\nFirst Name: " . $first_name . "\r\nLast Name: " . $last_name . "\r\nEmail: " . $email . "\r\nPhone: " . $phone . "\r\nSincerely,\r\nThe Sciencetap Team\r\n";
+	$message = wordwrap($message, 70, "\r\n");
+	mail($creator_email, 'Sciencetap Request For Account', $message);
+}
+
+function resetPassword($email){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	try{
+		$sql = "SELECT COUNT(*) FROM user WHERE email = :email";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':email', $email);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting email';
+		include 'error.html.php';
+		exit();
+	}
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT first_name, last_name, email FROM user WHERE email = :email";
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':email', $email);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching email';
+			include 'error.html.php';
+			exit();
+		}
+		$row = $s->fetch();
+		createTempPassword($row['first_name'], $row['last_name'], $row['email']);
+		return 'Success';
+	}else{
+		return 'Failure';
+	}
+}
+function createTempPassword($first_name, $last_name, $email){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$tempPass= substr(md5(rand()), 0, 32);
+	$scrambled = md5($tempPass . 'ionic');
+	try{
+		$sql = 'UPDATE user SET password = :password WHERE email = :email';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':email', $email);
+		$s->bindValue(':password', $scrambled);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error creating new password'. $e->getMessage();
+		include 'error.html.php';
+		exit();
+	}
+	mailTempPassword($tempPass, $email, $first_name, $last_name);
+}
+
+function mailTempPassword($tempPass, $email, $first, $last){
+	$message = "Dear " . $first . ' ' . $last . ",\r\n  Your password on the  account Sciencetap Project was reset\r\nYour temporary password is\r\n" . $tempPass . "\r\nSincerely,\r\nThe Sciencetap Team\r\n";
+	$message = wordwrap($message, 70, "\r\n");
+	mail($email, 'Sciencetap Temp Password', $message);
+}
+
+function createProject($project_name, $project_descr){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = 'INSERT INTO project SET
+			name = :name,
+			description = :description,
+			created_at = NOW()';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':name', $project_name);
+		$s->bindValue(':description', $project_descr);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error adding project';// . $e->getMessage();
+		include 'error.html.php';
+		exit();
+	}
+
+	//assign project to all admins
+
+	return true;
+}
+
+function getUnassignedSites(){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+
+	try{
+		$sql = "SELECT COUNT(*) FROM site WHERE project_id = 0";
+		$s = $pdo->prepare($sql);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting unassigned sites';
+		include 'error.html.php';
+		exit();
+	}
+			
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT site_id, site_name, site_description, site_lat,
+				site_lon, project_id FROM site WHERE project_id = 0";
+			$s = $pdo->prepare($sql);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching unassigned sites';
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$unassigned_sites[] = array('site_id' => $row['site_id'], 'site_name' => $row['site_name'],
+			'site_description' => $row['site_description'], 'site_lat' => $row['site_lat'],
+			'site_lon' => $row['site_lon'], 'project_id' => $row['project_id']);
+		}
+	}else{
+		$unassigned_sites[] = array('site_id' => 0, 'site_name' => "No Unassigned Sites",
+		'site_description' => "None", 'site_lat' => 0, 'site_lon' => 0, 'project_id' => 0);
+	}
+	
+return $unassigned_sites;
+}
+
+
+function getCreateProjectForms($project_id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$forms = array();
+
+	try{
+		$sql = "SELECT COUNT(*) FROM form";
+		$s = $pdo->prepare($sql);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting forms';
+		include 'error.html.php';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT form_id, form_name, form_description FROM form";
+			$s = $pdo->prepare($sql);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching forms';
+			include 'error.html.php';
+			exit();
+		}
+		foreach($s as $row){
+			$forms[] = array('form_id' => $row['form_id'],'form_name' => $row['form_name'],
+			'form_description' => $row['form_description'], 'assigned' => false);
+		}
+	}else{
+		$forms[] = array('form_id' => 0,'form_name' => 'No forms', 'form_description' => 'None', 'assigned' => false);
+	}
+	
+return $forms;
+}
+
+
+function getCreateProjectUsers(){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$users = array();
+	
+	try{
+		$sql = "SELECT COUNT(*) FROM user";
+		$s = $pdo->prepare($sql);
+		$s->execute();
+	}catch(PDOException $e){
+		exit();
+	}
+	
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT user_id, first_name, last_name, email, super_admin FROM user";
+			$s = $pdo->prepare($sql);
+			$s->execute();
+		}catch(PDOException $e){
+			exit();
+		}
+		foreach($s as $row){
+			$users[] = array("user_id" => $row['user_id'], "first_name" => $row['first_name'], "last_name" => $row['last_name'], "email" => $row['email'], "super_admin" => $row['super_admin'], 'assigned' => false, 'project_admin' => false);
+		}
+	}else{
+		$users[] = array("user_id" => 0, "first_name" => "None", "last_name" => "None", "email" => "None", "super_admin" => 0, 'assigned' => false, 'project_admin' => false);
+	}
+	
+return $users;
+}
+
+function createSite($site_name, $site_descr, $site_lat, $site_lon, $project_uid){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = 'INSERT INTO sites SET
+			name = :name,
+			description = :description,
+			lat = :site_lat,
+			lon = :site_lon,
+			created_at = NOW()';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':name', $site_name);
+		$s->bindValue(':description', $site_descr);
+		$s->bindValue(':site_lat', $site_lat);
+		$s->bindValue(':site_lon', $site_lon);
+		$s->execute();
+
+		$site_id = $pdo->lastInsertId();
+		$sql = 'INSERT INTO project_x_sites SET
+			site_uid = :site_uid,
+			project_uid = :project_uid,
+			created_at = NOW()';
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':site_uid', $site_id);
+		$s->bindValue(':project_uid', $project_uid);
+		$s->execute();
+		
+	}catch(PDOException $e){
+		$error = 'Error adding site';// . $e->getMessage();
+		exit();
+	}
+
+	return true;
+}
+
+function getCreateSiteProjects(){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	$projects = array();
+
+	try{
+		$sql = "SELECT COUNT(*) FROM project";
+		$s = $pdo->prepare($sql);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting projects';
+		exit();
+	}
+		
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = "SELECT project_id, project_name, project_description FROM project";
+			$s = $pdo->prepare($sql);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error fetching projects';
+			exit();
+		}
+		foreach($s as $row){
+			$projects[] = array('project_id' => $row['project_id'],'project_name' => $row['project_name'],
+			'project_description' => $row['project_description'], 'assigned' => false);
+		}
+	}else{
+		$projects[] = array('project_id' => 0,'project_name' => 'No Projects', 'project_description' => 'None', 'assigned' => false);
+	}
+	
+return $projects;
+}
+
+function updateSite($site_id, $project_id){
+	include $_SERVER['DOCUMENT_ROOT'] . '/includes/dbTest.inc.php';
+	
+	try{
+		$sql = "SELECT COUNT(*) FROM site WHERE site_id = :site_id";
+		$s = $pdo->prepare($sql);
+		$s->bindValue(':site_id', $site_id);
+		$s->execute();
+	}catch(PDOException $e){
+		$error = 'Error counting site';
+		exit();
+	}
+	
+	$row = $s->fetch();
+	if($row[0] > 0){
+		try{
+			$sql = 'UPDATE site SET
+				project_id = :project_id
+				WHERE site_id = :site_id';
+			$s = $pdo->prepare($sql);
+			$s->bindValue(':project_id', $project_id);
+			$s->bindValue(':site_id', $site_id);
+			$s->execute();
+		}catch(PDOException $e){
+			$error = 'Error updating project_id for site';// . $e->getMessage();
+			exit();
+		}
+	}
+}
+
+
+?>
